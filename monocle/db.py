@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from enum import Enum
 from time import time, mktime
 
-from sqlalchemy import Column, Integer, String, Float, SmallInteger, BigInteger, ForeignKey, UniqueConstraint, create_engine, cast, func, desc, asc, and_, exists
+from sqlalchemy import Column, Integer, String, Float, SmallInteger, BigInteger, ForeignKey, UniqueConstraint, create_engine, cast, func, desc, asc, and_, exists, IntegrityError
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.types import TypeDecorator, Numeric, Text
 from sqlalchemy.ext.declarative import declarative_base
@@ -356,7 +356,12 @@ def add_sighting(session, pokemon):
         move_1=pokemon.get('move_1'),
         move_2=pokemon.get('move_2')
     )
-    session.add(obj)
+    session.begin_nested()
+    try:
+        session.add(obj)
+        session.commit()
+    except IntegrityError as e:
+        session.rollback()
     SIGHTING_CACHE.add(pokemon)
 
 
@@ -485,7 +490,12 @@ def add_fort_sighting(session, raw_fort):
         guard_pokemon_id=raw_fort['guard_pokemon_id'],
         last_modified=raw_fort['last_modified'],
     )
-    session.add(obj)
+    session.begin_nested()
+    try:
+        session.add(obj)
+        session.commit()
+    except IntegrityError as e:
+        session.rollback()
     FORT_CACHE.add(raw_fort)
 
 
