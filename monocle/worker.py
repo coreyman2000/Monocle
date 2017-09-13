@@ -185,7 +185,7 @@ class Worker:
             raise err
 
         self.error_code = '°'
-        version = 6900
+        version = 7301
         async with self.sim_semaphore:
             self.error_code = 'APP SIMULATION'
             if conf.APP_SIMULATION:
@@ -211,7 +211,9 @@ class Worker:
 
             player_data = get_player.player_data
             tutorial_state = player_data.tutorial_state
-            self.item_capacity = player_data.max_item_storage
+            # API can return 0 as capacity.
+            if player_data.max_item_storage != 0:
+                self.item_capacity = player_data.max_item_storage
             if 'created' not in self.account:
                 self.account['created'] = player_data.creation_timestamp_ms / 1000
         except (KeyError, TypeError, AttributeError):
@@ -596,9 +598,9 @@ class Worker:
             else:
                 if (not dl_hash
                         and conf.FORCED_KILL
-                        and dl_settings.settings.minimum_client_version != '0.69.0'):
+                        and dl_settings.settings.minimum_client_version != '0.73.1'):
                     forced_version = StrictVersion(dl_settings.settings.minimum_client_version)
-                    if forced_version > StrictVersion('0.69.0'):
+                    if forced_version > StrictVersion('0.73.1'):
                         err = '{} is being forced, exiting.'.format(forced_version)
                         self.log.error(err)
                         print(err)
@@ -790,7 +792,8 @@ class Worker:
                             or (encounter_conf == 'some'
                             and normalized['pokemon_id'] in conf.ENCOUNTER_IDS)):
                         try:
-                            await self.encounter(normalized, pokemon.spawn_point_id)
+                            async with ClientSession(loop=LOOP) as session: 
+                                await self.pgscout(session, normalized, pokemon.spawn_point_id, conf.PGSCOUT_ATTEMPTS)
                         except CancelledError:
                             db_proc.add(normalized)
                             raise
@@ -798,7 +801,7 @@ class Worker:
                             self.log.warning('{} during encounter', e.__class__.__name__)
 
                 if notify_conf and self.notifier.eligible(normalized):
-                    if encounter_conf and 'move_1' not in normalized:
+                    if encounter_conf and 'move_1' not in normalized and (self.player_level or 0) >= 30:
                         try:
                             await self.encounter(normalized, pokemon.spawn_point_id)
                         except CancelledError:
@@ -893,6 +896,40 @@ class Worker:
         self.update_accounts_dict()
         self.handle = LOOP.call_later(60, self.unset_code)
         return pokemon_seen + forts_seen + points_seen
+
+    async def pgscout(self, session, pokemon, spawn_id, retry):
+        if (retry <= 0):
+            self.log.exception('PGSCout failed to gather pokemon data after ' + conf.PGSCOUT_ATTEMPTS + ' tries or you set ATTEMPTS <=0')
+            return
+        else:
+            try:
+                async with session.get(
+                        conf.PGSCOUT_ADDRESS + ':' + conf.PGSCOUT_PORT + '/iv',
+                        params={'pokemon_id': pokemon['pokemon_id'],
+                                'encounter_id': pokemon['encounter_id'],
+                                'spawn_point_id': spawn_id,
+                                'latitude': str(pokemon['lat']),
+                                'longitude': str(pokemon['lon'])},
+                        timeout=conf.PGSCOUT_TIMEOUT) as resp:
+                    response = await resp.json(loads=json_loads)
+                try:
+                    pokemon['move_1'] = response['move_1']
+                    pokemon['move_2'] = response['move_2']
+                    pokemon['individual_attack'] = response.get('iv_attack',0)
+                    pokemon['individual_defense'] = response.get('iv_defense',0)
+                    pokemon['individual_stamina'] = response.get('iv_stamina',0)
+                    pokemon['height'] = response['height']
+                    pokemon['weight'] = response['weight']
+                    pokemon['gender'] = response['gender']
+                    pokemon['form'] = response.get('form')
+                    pokemon['cp'] = response.get('cp')
+                    pokemon['level'] = calc_pokemon_level(response.get('cp_multiplier'))
+                except KeyError:
+                    self.log.error('Missing Pokemon data in PGScout response, retrying. ' + retry-1 + ' tries eft')
+                    await self.pgscout(session, pokemon, spawn_id, retry-1)
+            except Exception:
+                self.log.exception('PGScout Request Error, retrying. ' + retry-1 + ' tries left')
+                await self.pgscout(session, pokemon, spawn_id, retry-1)
 
     def smart_throttle(self, requests=1):
         try:
