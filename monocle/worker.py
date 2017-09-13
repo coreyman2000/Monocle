@@ -925,7 +925,7 @@ class Worker:
                     pokemon['gender'] = response['gender']
                     pokemon['form'] = response.get('form')
                     pokemon['cp'] = response.get('cp')
-                    pokemon['level'] = calc_pokemon_level(response.get('cp_multiplier'))
+                    pokemon['level'] = response.get('level')
                 except KeyError:
                     self.log.error('Missing Pokemon data in PGScout response, retrying. ' + retry-1 + ' tries eft')
                     await self.pgscout(session, pokemon, spawn_id, retry-1)
