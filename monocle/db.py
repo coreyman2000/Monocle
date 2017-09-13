@@ -422,8 +422,8 @@ def add_sighting(session, pokemon):
         sta_iv=pokemon.get('individual_stamina'),
         move_1=pokemon.get('move_1'),
         move_2=pokemon.get('move_2'),
-        cp = Column(SmallInteger),
-        level = Column(SmallInteger)
+        cp=pokemon.get('cp'),
+        level=pokemon.get('level')
     )
     session.add(obj)
     SIGHTING_CACHE.add(pokemon)
