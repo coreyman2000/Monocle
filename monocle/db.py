@@ -422,7 +422,7 @@ def add_sighting(session, pokemon):
         sta_iv=pokemon.get('individual_stamina'),
         move_1=pokemon.get('move_1'),
         move_2=pokemon.get('move_2'),
-        cp = Column(SmallInteger)
+        cp = Column(SmallInteger),
         level = Column(SmallInteger)
     )
     session.add(obj)
@@ -523,7 +523,7 @@ def add_mystery(session, pokemon):
         sta_iv=pokemon.get('individual_stamina'),
         move_1=pokemon.get('move_1'),
         move_2=pokemon.get('move_2'),
-        cp=pokemon.get('cp')
+        cp=pokemon.get('cp'),
         level=pokemon.get('level')
     )
     session.add(obj)
