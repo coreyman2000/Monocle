@@ -802,9 +802,10 @@ class Worker:
                             self.log.warning('{} during encounter', e.__class__.__name__)
 
                 if notify_conf and self.notifier.eligible(normalized):
-                    if encounter_conf and 'move_1' not in normalized and (self.player_level or 0) >= 30:
+                    if encounter_conf and 'move_1' not in normalized:
                         try:
-                            await self.encounter(normalized, pokemon.spawn_point_id)
+                            async with ClientSession(loop=LOOP) as session: 
+                                await self.pgscout(session, normalized, pokemon.spawn_point_id, conf.PGSCOUT_ATTEMPTS)
                         except CancelledError:
                             db_proc.add(normalized)
                             raise
