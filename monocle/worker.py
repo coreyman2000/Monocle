@@ -791,7 +791,7 @@ class Worker:
                         normalized not in MYSTERY_CACHE):
                     if (encounter_conf == 'all'
                             or (encounter_conf == 'some'
-                            and normalized['pokemon_id'] in conf.ENCOUNTER_IDS)):
+                            and normalized['pokemon_id'] in conf.ENCOUNTER_IDS) and conf.PGSCOUT_ATTEMPTS > 0):
                         try:
                             async with ClientSession(loop=LOOP) as session: 
                                 await self.pgscout(session, normalized, pokemon.spawn_point_id, conf.PGSCOUT_ATTEMPTS)
@@ -802,7 +802,7 @@ class Worker:
                             self.log.warning('{} during encounter', e.__class__.__name__)
 
                 if notify_conf and self.notifier.eligible(normalized):
-                    if encounter_conf and 'move_1' not in normalized:
+                    if encounter_conf and 'move_1' not in normalized and conf.PGSCOUT_ATTEMPTS > 0:
                         try:
                             async with ClientSession(loop=LOOP) as session: 
                                 await self.pgscout(session, normalized, pokemon.spawn_point_id, conf.PGSCOUT_ATTEMPTS)
