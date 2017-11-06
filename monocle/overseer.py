@@ -152,8 +152,6 @@ class Overseer:
         after_spawns = []
         speeds = []
 
-        LOOP.create_task(self.save_redis('workers', json.dumps(self.manager.worker_dict()._getvalue())))
-
         for w in self.workers:
             after_spawns.append(w.after_spawn)
             seen_per_worker.append(w.total_seen)
@@ -188,6 +186,7 @@ class Overseer:
             len(SIGHTING_CACHE), len(MYSTERY_CACHE), len(db_proc)
         )
         LOOP.call_later(refresh, self.update_stats)
+        LOOP.create_task(self.save_redis('workers', json.dumps(self.manager.worker_dict()._getvalue())))
 
     def get_dots_and_messages(self):
         """Returns status dots and status messages for workers
