@@ -14,7 +14,7 @@ from pogeo import get_distance
 
 from .db import FORT_CACHE, MYSTERY_CACHE, SIGHTING_CACHE, RAID_CACHE
 from .utils import round_coords, load_pickle, get_device_info, get_start_coords, Units, randomize_point
-from .shared import get_logger, LOOP, SessionManager, run_threaded, ACCOUNTS
+from .shared import get_logger, LOOP, SessionManager, run_threaded, ACCOUNTS, RedisManager
 from . import altitudes, avatar, bounds, db_proc, spawns, sanitized as conf
 
 if conf.NOTIFY:
@@ -128,6 +128,7 @@ class Worker:
         self.pokestops = conf.SPIN_POKESTOPS
         self.next_spin = 0
         self.handle = HandleStub()
+        self.next_gym = 0
 
     def initialize_api(self):
         device_info = get_device_info(self.account)
@@ -836,8 +837,13 @@ class Worker:
                         pokestop = self.normalize_pokestop(fort)
                         db_proc.add(pokestop)
                 else:
+                    normalized_fort = self.normalize_gym(fort)
                     if fort not in FORT_CACHE:
-                        db_proc.add(self.normalize_gym(fort))
+                        if time() > self.next_gym:
+                            gym = await self.gym_get_info(normalized_fort)
+                            if gym:
+                                self.log.warning('Info for {}',  normalized_fort['name'])
+                        db_proc.add(normalized_fort)
                     if fort.HasField('raid_info'):
                         normalized_raid = self.normalize_raid(fort)
                         if normalized_raid not in RAID_CACHE:
@@ -898,6 +904,46 @@ class Worker:
         self.update_accounts_dict()
         self.handle = LOOP.call_later(60, self.unset_code)
         return pokemon_seen + forts_seen + points_seen
+
+    async def gym_get_info(self, gym):
+        self.error_code = 'G'
+
+        # randomize location up to ~1.4 meters
+        self.simulate_jitter(amount=0.00001)
+
+        request = self.api.create_request()
+        request.gym_get_info(gym_id = gym['external_id'],
+                             player_lat_degrees = self.location[0],
+                             player_lng_degrees = self.location[1],
+                             gym_lat_degrees = gym['lat'],
+                             gym_lng_degrees = gym['lon'])
+        responses = await self.call(request, action=1)
+
+        info = responses['GYM_GET_INFO']
+        name = info.name
+        result = info.result or 0
+
+        if result == 1:
+            try:
+                gym['name'] = name
+                gym['url'] = info.url
+
+                for gym_defender in info.gym_status_and_defenders.gym_defender:
+                    normalized_defender = self.normalize_gym_defender(gym_defender)
+                    gym['gym_defenders'].append(normalized_defender)
+
+            except KeyError as e:
+                self.log.error('Missing Gym data in gym_get_info response. {}',e)
+            except Exception as e:
+                self.log.error('Unknown error: in gym_get_info: {}',e)
+
+        elif result == 2:
+            self.log.info('The server said {} was out of gym details range. {:.1f}m {:.1f}{}',
+                name, distance, self.speed, UNIT_STRING)
+
+        self.next_gym = time() + conf.GYM_COOLDOWN
+        self.error_code = '!'
+        return gym 
 
     async def pgscout(self, session, pokemon, spawn_id, retry):
         if (retry <= 0):
@@ -1313,7 +1359,8 @@ class Worker:
             'in_battle': raw.is_in_battle,
             'slots_available': raw.gym_display.slots_available,
             'time_ocuppied': raw.gym_display.occupied_millis // 1000,
-            'last_modified': raw.last_modified_timestamp_ms // 1000
+            'last_modified': raw.last_modified_timestamp_ms // 1000,
+            'gym_defenders': []
         }
 
     @staticmethod
@@ -1342,8 +1389,38 @@ class Worker:
             'type': 'pokestop',
             'external_id': raw.id,
             'lat': raw.latitude,
-            'lon': raw.longitude
+            'lon': raw.longitude,
+            'name': None,
+            'url': None
         }
+
+    @staticmethod
+    def normalize_gym_defender(raw):
+        pokemon = raw.motivated_pokemon.pokemon
+
+        obj = {
+            'type': 'gym_defender',
+            'external_id': pokemon.id,
+            'pokemon_id': pokemon.pokemon_id,
+            'owner_name': pokemon.owner_name,
+            'nickname': pokemon.nickname,
+            'cp': pokemon.cp,
+            'stamina': pokemon.stamina,
+            'stamina_max': pokemon.stamina_max,
+            'atk_iv': pokemon.individual_attack,
+            'def_iv': pokemon.individual_defense,
+            'sta_iv': pokemon.individual_stamina,
+            'move_1': pokemon.move_1,
+            'move_2': pokemon.move_2,
+            'battles_attacked': pokemon.battles_attacked,
+            'battles_defended': pokemon.battles_defended,
+            'num_upgrades': 0,
+        }
+
+        if hasattr(pokemon, 'num_upgrades'):
+            obj['num_upgrades'] = pokemon.num_upgrades
+
+        return obj
 
     @staticmethod
     async def random_sleep(minimum=10.1, maximum=14, loop=LOOP):

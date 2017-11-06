@@ -84,6 +84,7 @@ class SightingCache:
     It's used in order not to make as many queries to the database.
     It schedules sightings to be removed as soon as they expire.
     """
+
     def __init__(self):
         self.store = {}
 
@@ -92,7 +93,8 @@ class SightingCache:
 
     def add(self, sighting):
         self.store[sighting['spawn_id']] = sighting['expire_timestamp']
-        call_at(sighting['expire_timestamp'], self.remove, sighting['spawn_id'])
+        call_at(sighting['expire_timestamp'],
+                self.remove, sighting['spawn_id'])
 
     def remove(self, spawn_id):
         try:
@@ -116,6 +118,7 @@ class MysteryCache:
     It's used in order not to make as many queries to the database.
     It schedules sightings to be removed an hour after being seen.
     """
+
     def __init__(self):
         self.store = {}
 
@@ -157,6 +160,7 @@ class MysteryCache:
 
 class FortCache:
     """Simple cache for storing fort sightings"""
+
     def __init__(self):
         self.gyms = {}
         self.pokestops = set()
@@ -191,9 +195,11 @@ class FortCache:
         except (FileNotFoundError, TypeError, KeyError):
             pass
 
+
 class RaidCache:
     """Simple cache for storing raid info"""
     """Self-delete after raid ends"""
+
     def __init__(self):
         self.raids = {}
         self.class_version = 2
@@ -203,7 +209,8 @@ class RaidCache:
         return len(self.raids)
 
     def add(self, raid):
-        self.raids[raid['external_id']] = str(raid['raid_seed']) + str(raid.get('pokemon_id', 0))
+        self.raids[raid['external_id']] = str(
+            raid['raid_seed']) + str(raid.get('pokemon_id', 0))
         call_at(raid['raid_end'], self.remove, raid['external_id'])
 
     def __contains__(self, raid):
@@ -233,6 +240,7 @@ class RaidCache:
                 self.__dict__.update(state)
         except (FileNotFoundError, TypeError, KeyError):
             pass
+
 
 SIGHTING_CACHE = SightingCache()
 MYSTERY_CACHE = MysteryCache()
@@ -330,11 +338,20 @@ class Fort(Base):
     external_id = Column(String(35), unique=True)
     lat = Column(FLOAT_TYPE)
     lon = Column(FLOAT_TYPE)
+    name = Column(String(255))
+    url = Column(String(255))
 
     sightings = relationship(
         'FortSighting',
         backref='fort',
         order_by='FortSighting.last_modified'
+    )
+
+    gym_defenders = relationship(
+        'GymDefender',
+        backref='fort',
+        order_by='GymDefender.id',
+        cascade="save-update, merge, delete"
     )
 
 
@@ -357,6 +374,31 @@ class FortSighting(Base):
             name='fort_id_last_modified_unique'
         ),
     )
+
+
+class GymDefender(Base):
+    __tablename__ = 'gym_defenders'
+
+    id = Column(Integer, primary_key=True)
+    fort_id = Column(Integer, ForeignKey(
+        'forts.id', onupdate='CASCADE', ondelete='CASCADE'), nullable=False, index=True)
+    external_id = Column(HUGE_TYPE, nullable=False)
+    pokemon_id = Column(SmallInteger)
+    owner_name = Column(String(128))
+    nickname = Column(String(128))
+    cp = Column(Integer)
+    stamina = Column(Integer)
+    stamina_max = Column(Integer)
+    atk_iv = Column(SmallInteger)
+    def_iv = Column(SmallInteger)
+    sta_iv = Column(SmallInteger)
+    move_1 = Column(SmallInteger)
+    move_2 = Column(SmallInteger)
+    battles_attacked = Column(Integer)
+    battles_defended = Column(Integer)
+    num_upgrades = Column(SmallInteger)
+    created_at = Column(Integer, index=True)
+
 
 class RaidInfo(Base):
     __tablename__ = 'raid_info'
@@ -384,6 +426,8 @@ class Pokestop(Base):
     external_id = Column(String(35), unique=True)
     lat = Column(FLOAT_TYPE, index=True)
     lon = Column(FLOAT_TYPE, index=True)
+    name = Column(String(255))
+    url = Column(String(255))
 
 
 @contextmanager
@@ -405,9 +449,9 @@ def add_sighting(session, pokemon):
     if pokemon in SIGHTING_CACHE:
         return
     if session.query(exists().where(and_(
-                Sighting.expire_timestamp == pokemon['expire_timestamp'],
-                Sighting.encounter_id == pokemon['encounter_id']))
-            ).scalar():
+        Sighting.expire_timestamp == pokemon['expire_timestamp'],
+        Sighting.encounter_id == pokemon['encounter_id']))
+    ).scalar():
         SIGHTING_CACHE.add(pokemon)
         return
     obj = Sighting(
@@ -542,13 +586,24 @@ def add_fort_sighting(session, raw_fort):
             lon=raw_fort['lon'],
         )
         session.add(fort)
+
+    # Update fort name
+    if (not fort.name) and ('name' in raw_fort):
+        fort.name = raw_fort['name']
+        fort.url = raw_fort['url']
+        session.merge(fort)
+
+    if fort.id and 'gym_defenders' in raw_fort and len(raw_fort['gym_defenders']) > 0:
+        add_gym_defenders(session, fort, raw_fort['gym_defenders'])
+
     if fort.id and session.query(exists().where(and_(
-                FortSighting.fort_id == fort.id,
-                FortSighting.last_modified == raw_fort['last_modified']
-            ))).scalar():
+        FortSighting.fort_id == fort.id,
+        FortSighting.last_modified == raw_fort['last_modified']
+    ))).scalar():
         # Why is it not in the cache? It should be there!
         FORT_CACHE.add(raw_fort)
         return
+
     obj = FortSighting(
         fort=fort,
         team=raw_fort['team'],
@@ -560,6 +615,34 @@ def add_fort_sighting(session, raw_fort):
     )
     session.add(obj)
     FORT_CACHE.add(raw_fort)
+
+
+def add_gym_defenders(session, fort, gym_defenders):
+
+    session.query(GymDefender).filter(GymDefender.fort_id == fort.id).delete()
+
+    for gym_defender in gym_defenders:
+        obj = GymDefender(
+            fort=fort,
+            external_id=gym_defender['external_id'],
+            pokemon_id=gym_defender['pokemon_id'],
+            owner_name=gym_defender['owner_name'],
+            nickname=gym_defender['nickname'],
+            cp=gym_defender['cp'],
+            stamina=gym_defender['stamina'],
+            stamina_max=gym_defender['stamina_max'],
+            atk_iv=gym_defender['atk_iv'],
+            def_iv=gym_defender['def_iv'],
+            sta_iv=gym_defender['sta_iv'],
+            move_1=gym_defender['move_1'],
+            move_2=gym_defender['move_2'],
+            battles_attacked=gym_defender['battles_attacked'],
+            battles_defended=gym_defender['battles_defended'],
+            num_upgrades=gym_defender['num_upgrades'],
+            created_at=round(time())
+        )
+        session.add(obj)
+
 
 def add_raid_info(session, raw_raid):
     # Check if raid_seed exists
@@ -578,7 +661,7 @@ def add_raid_info(session, raw_raid):
             # This raid is not in cache?
             RAID_CACHE.add(raw_raid)
             return
-        
+
     # Get fort id
     fort = session.query(Fort) \
         .filter(Fort.external_id == raw_raid['external_id']) \
@@ -600,6 +683,7 @@ def add_raid_info(session, raw_raid):
     )
     RAID_CACHE.add(raw_raid)
     session.add(raid)
+
 
 def add_pokestop(session, raw_pokestop):
     pokestop_id = raw_pokestop['external_id']
@@ -627,14 +711,16 @@ def update_failures(session, spawn_id, success, allowed=conf.FAILURES_ALLOWED):
         elif spawnpoint.failures >= allowed:
             if spawnpoint.duration == 60:
                 spawnpoint.duration = None
-                log.warning('{} consecutive failures on {}, no longer treating as an hour spawn.', allowed + 1, spawn_id)
+                log.warning(
+                    '{} consecutive failures on {}, no longer treating as an hour spawn.', allowed + 1, spawn_id)
             else:
                 spawnpoint.updated = 0
                 try:
                     del spawns.despawn_times[spawn_id]
                 except KeyError:
                     pass
-                log.warning('{} consecutive failures on {}, will treat as an unknown from now on.', allowed + 1, spawn_id)
+                log.warning(
+                    '{} consecutive failures on {}, will treat as an unknown from now on.', allowed + 1, spawn_id)
             spawnpoint.failures = 0
         else:
             spawnpoint.failures += 1
@@ -644,9 +730,9 @@ def update_failures(session, spawn_id, success, allowed=conf.FAILURES_ALLOWED):
 
 def update_mystery(session, mystery):
     encounter = session.query(Mystery) \
-                .filter(Mystery.spawn_id == mystery['spawn']) \
-                .filter(Mystery.encounter_id == mystery['encounter']) \
-                .first()
+        .filter(Mystery.spawn_id == mystery['spawn']) \
+        .filter(Mystery.encounter_id == mystery['encounter']) \
+        .first()
     if not encounter:
         return
     hour = encounter.first_seen - (encounter.first_seen % 3600)
@@ -701,7 +787,9 @@ def _get_forts(session):
         )
     ''').fetchall()
 
+
 get_forts = _get_forts_sqlite if DB_TYPE == 'sqlite' else _get_forts
+
 
 def get_raids_info(session):
     return session.execute('''
@@ -720,9 +808,10 @@ def get_raids_info(session):
         OR ri.raid_end >= {}
     '''.format(time(), time())).fetchall()
 
+
 def get_session_stats(session):
     query = session.query(func.min(Sighting.expire_timestamp),
-        func.max(Sighting.expire_timestamp))
+                          func.max(Sighting.expire_timestamp))
     if conf.REPORT_SINCE:
         query = query.filter(Sighting.expire_timestamp > SINCE_TIME)
     min_max_result = query.one()
@@ -804,7 +893,7 @@ def get_pokemon_ranking(session):
     if conf.REPORT_SINCE:
         query = query.filter(Sighting.expire_timestamp > SINCE_TIME)
     ranked = [r[0] for r in query]
-    none_seen = [x for x in range(1,252) if x not in ranked]
+    none_seen = [x for x in range(1, 252) if x not in ranked]
     return none_seen + ranked
 
 
@@ -856,7 +945,7 @@ def get_nonexistent_pokemon(session):
         {report_since}
     '''.format(report_since=SINCE_QUERY))
     db_ids = [r[0] for r in query]
-    return [x for x in range(1,252) if x not in db_ids]
+    return [x for x in range(1, 252) if x not in db_ids]
 
 
 def get_all_sightings(session, pokemon_ids):
