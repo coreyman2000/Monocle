@@ -23,7 +23,7 @@ from time import monotonic, sleep
 from sqlalchemy.exc import DBAPIError
 from aiopogo import close_sessions, activate_hash_server
 
-from monocle.shared import LOOP, get_logger, SessionManager, ACCOUNTS
+from monocle.shared import LOOP, get_logger, SessionManager, ACCOUNTS, RedisManager
 from monocle.utils import get_address, dump_pickle
 from monocle.worker import Worker
 from monocle.overseer import Overseer
@@ -167,6 +167,7 @@ def cleanup(overseer, manager):
         print('Closing pipes, sessions, and event loop...')
         manager.shutdown()
         SessionManager.close()
+        LOOP.run_until_complete(RedisManager.close())
         close_sessions()
         LOOP.close()
         print('Done.')
@@ -199,7 +200,6 @@ def main():
             raise OSError('Another instance is running with the same socket. Stop that process or: rm {}'.format(address)) from e
 
     LOOP.set_exception_handler(exception_handler)
-
     overseer = Overseer(manager)
     overseer.start(args.status_bar)
     launcher = LOOP.create_task(overseer.launch(args.bootstrap, args.pickle))

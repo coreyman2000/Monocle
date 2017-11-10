@@ -8,7 +8,8 @@ from aiopogo import json_dumps
 from aiopogo.session import SESSIONS
 
 from .utils import load_accounts
-
+from . import sanitized as conf
+import aioredis
 
 LOOP = get_event_loop()
 ACCOUNTS = load_accounts()
@@ -33,6 +34,25 @@ class SessionManager:
     def close(cls):
         try:
             cls._session.close()
+        except Exception:
+            pass
+
+
+class RedisManager:
+
+    @classmethod
+    async def get(cls):
+        try:
+            return cls._redis
+        except AttributeError:
+            cls._redis = await aioredis.create_redis((conf.REDIS_HOST, conf.REDIS_PORT), loop=LOOP)
+            return cls._redis
+
+    @classmethod
+    async def close(cls):
+        try:
+            cls._redis.close()
+            await redis.wait_closed()
         except Exception:
             pass
 

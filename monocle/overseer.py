@@ -6,13 +6,13 @@ from cyrandom import shuffle
 from collections import deque
 from itertools import dropwhile
 from time import time, monotonic
-
+import json
 from aiopogo import HashServer
 from sqlalchemy.exc import OperationalError
 
 from .db import SIGHTING_CACHE, MYSTERY_CACHE
 from .utils import get_current_hour, dump_pickle, get_start_coords, get_bootstrap_points, randomize_point, best_factors, percentage_split
-from .shared import get_logger, LOOP, run_threaded, ACCOUNTS
+from .shared import get_logger, LOOP, run_threaded, ACCOUNTS, RedisManager
 from . import bounds, db_proc, spawns, sanitized as conf
 from .worker import Worker
 
@@ -71,6 +71,7 @@ class Overseer:
         self.idle_seconds = 0
         self.log.info('Overseer initialized')
         self.pokemon_found = ''
+        self.redis = {}
 
     def start(self, status_bar):
         self.captcha_queue = self.manager.captcha_queue()
@@ -139,6 +140,12 @@ class Overseer:
             except Exception as e:
                 self.log.exception('A wild {} appeared in exit_progress!', e.__class__.__name__)
 
+    async def save_redis(self, key, value, area_name=conf.AREA_NAME): 
+        try:
+            await self.redis.set(area_name + '_' + key, value)
+        except AttributeError:
+            self.log.warning('Redis connection unavailable')
+        
     def update_stats(self, refresh=conf.STAT_REFRESH, med=median, count=conf.GRID[0] * conf.GRID[1]):
         visits = []
         seen_per_worker = []
@@ -150,7 +157,7 @@ class Overseer:
             seen_per_worker.append(w.total_seen)
             visits.append(w.visits)
             speeds.append(w.speed)
-
+        
         self.stats = (
             'Seen per worker: min {}, max {}, med {:.0f}\n'
             'Visits per worker: min {}, max {}, med {:.0f}\n'
@@ -179,6 +186,11 @@ class Overseer:
             len(SIGHTING_CACHE), len(MYSTERY_CACHE), len(db_proc)
         )
         LOOP.call_later(refresh, self.update_stats)
+        if conf.MAP_WORKERS:
+            try:
+                LOOP.create_task(self.save_redis('workers', json.dumps(self.manager.worker_dict()._getvalue())))
+            except AttributeError:
+                pass
 
     def get_dots_and_messages(self):
         """Returns status dots and status messages for workers
@@ -346,6 +358,9 @@ class Overseer:
     async def launch(self, bootstrap, pickle):
         exceptions = 0
         self.next_mystery_reload = 0
+
+        self.log.warning('Iniciando el Manager de Redis...')
+        self.redis = await RedisManager.get()
 
         if not pickle or not spawns.unpickle():
             await self.update_spawns(initial=True)
