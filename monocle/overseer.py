@@ -186,7 +186,11 @@ class Overseer:
             len(SIGHTING_CACHE), len(MYSTERY_CACHE), len(db_proc)
         )
         LOOP.call_later(refresh, self.update_stats)
-        LOOP.create_task(self.save_redis('workers', json.dumps(self.manager.worker_dict()._getvalue())))
+        if conf.MAP_WORKERS:
+            try:
+                LOOP.create_task(self.save_redis('workers', json.dumps(self.manager.worker_dict()._getvalue())))
+            except AttributeError:
+                pass
 
     def get_dots_and_messages(self):
         """Returns status dots and status messages for workers
