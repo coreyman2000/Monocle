@@ -148,6 +148,10 @@ LOGIN_TIMEOUT = 2.5
 # Set to True to kill the scanner when a newer version is forced
 #FORCED_KILL = False
 
+# App version
+VERSION_INT = 8300
+VERSION_STR = '0.83.2'
+
 # exclude these Pokémon from the map by default (only visible in trash layer)
 TRASH_IDS = (
     16, 19, 21, 29, 32, 41, 46, 48, 50, 52, 56, 74, 77, 96, 111, 133,
