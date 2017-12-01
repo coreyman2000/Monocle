@@ -250,7 +250,7 @@ class Overseer:
         hours_since_start = seconds_since_start / 3600
 
         output = [
-            '{}Monocle running for {}'.format(_ansi, running_for),
+            '{}Monocle running for {} in area {}'.format(_ansi, running_for, conf.AREA_NAME),
             self.counts,
             self.stats,
             self.pokemon_found,
