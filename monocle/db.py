@@ -252,7 +252,7 @@ class WeatherCache:
         self.store = {}
 
     def __len__(self):
-        self.store = {}
+        return len(self.store)
 
     def add(self, weather):
         self.store[weather['s2_cell_id']] = weather
@@ -270,7 +270,7 @@ class WeatherCache:
                 and weather['alert_severity'] == raw_weather['alert_severity']
                 and weather['warn'] == raw_weather['warn']
                 and weather['day'] == raw_weather['day'])
-        except expression as identifier:
+        except KeyError:
             return False
 
 SIGHTING_CACHE = SightingCache()
