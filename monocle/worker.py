@@ -12,7 +12,7 @@ from aiopogo.auth_ptc import AuthPtc
 from cyrandom import choice, randint, uniform
 from pogeo import get_distance
 
-from .db import FORT_CACHE, MYSTERY_CACHE, SIGHTING_CACHE, RAID_CACHE
+from .db import FORT_CACHE, MYSTERY_CACHE, SIGHTING_CACHE, RAID_CACHE, WEATHER_CACHE
 from .utils import round_coords, load_pickle, get_device_info, get_start_coords, Units, randomize_point
 from .shared import get_logger, LOOP, SessionManager, run_threaded, ACCOUNTS, RedisManager
 from . import altitudes, avatar, bounds, db_proc, spawns, sanitized as conf
@@ -91,7 +91,8 @@ class Worker:
             try:
                 self.account = self.captcha_queue.get_nowait()
             except Empty as e:
-                raise ValueError("You don't have enough accounts for the number of workers specified in GRID.") from e
+                raise ValueError(
+                    "You don't have enough accounts for the number of workers specified in GRID.") from e
         self.username = self.account['username']
         try:
             self.location = self.account['location'][:2]
@@ -110,7 +111,8 @@ class Worker:
         except KeyError:
             self.account['items'] = {}
             self.items = self.account['items']
-        self.inventory_timestamp = self.account.get('inventory_timestamp', 0) if self.items else 0
+        self.inventory_timestamp = self.account.get(
+            'inventory_timestamp', 0) if self.items else 0
         self.player_level = self.account.get('level')
         self.num_captchas = 0
         self.eggs = {}
@@ -140,7 +142,8 @@ class Worker:
             self.api.proxy = next(self.proxies)
         try:
             if self.account['provider'] == 'ptc' and 'auth' in self.account:
-                self.api.auth_provider = AuthPtc(username=self.username, password=self.account['password'], timeout=conf.LOGIN_TIMEOUT)
+                self.api.auth_provider = AuthPtc(
+                    username=self.username, password=self.account['password'], timeout=conf.LOGIN_TIMEOUT)
                 self.api.auth_provider._access_token = self.account['auth']
                 self.api.auth_provider._access_token_expiry = self.account['expiry']
                 if self.api.auth_provider.check_access_token():
@@ -398,10 +401,9 @@ class Worker:
             # encounter tutorial
             await self.random_sleep(.7, .9)
             request = self.api.create_request()
-            request.get_download_urls(asset_id=
-                ('1a3c2816-65fa-4b97-90eb-0b301c064b7a/1487275569649000',
-                'aa8f7687-a022-4773-b900-3a8c170e9aea/1487275581132582',
-                'e89109b0-9a54-40fe-8431-12f7826c8194/1487275593635524'))
+            request.get_download_urls(asset_id=('1a3c2816-65fa-4b97-90eb-0b301c064b7a/1487275569649000',
+                                                'aa8f7687-a022-4773-b900-3a8c170e9aea/1487275581132582',
+                                                'e89109b0-9a54-40fe-8431-12f7826c8194/1487275593635524'))
             await self.call(request)
 
             await self.random_sleep(7, 10.3)
@@ -601,9 +603,11 @@ class Worker:
                 if (not dl_hash
                         and conf.FORCED_KILL
                         and dl_settings.settings.minimum_client_version != conf.VERSION_STR):
-                    forced_version = StrictVersion(dl_settings.settings.minimum_client_version)
+                    forced_version = StrictVersion(
+                        dl_settings.settings.minimum_client_version)
                     if forced_version > StrictVersion(conf.VERSION_STR):
-                        err = '{} is being forced, exiting.'.format(forced_version)
+                        err = '{} is being forced, exiting.'.format(
+                            forced_version)
                         self.log.error(err)
                         print(err)
                         exit()
@@ -612,7 +616,8 @@ class Worker:
             if challenge_url != ' ':
                 self.g['captchas'] += 1
                 if conf.CAPTCHA_KEY:
-                    self.log.warning('{} has encountered a CAPTCHA, trying to solve', self.username)
+                    self.log.warning(
+                        '{} has encountered a CAPTCHA, trying to solve', self.username)
                     await self.handle_captcha(challenge_url)
                 else:
                     raise CaptchaException
@@ -673,7 +678,8 @@ class Worker:
             await self.swap_account(reason='solving CAPTCHA failed')
         except ex.TempHashingBanException:
             self.error_code = 'HASHING BAN'
-            self.log.error('Temporarily banned from hashing server for using invalid keys.')
+            self.log.error(
+                'Temporarily banned from hashing server for using invalid keys.')
             await sleep(185, loop=LOOP)
         except ex.BannedAccountException:
             self.error_code = 'BANNED'
@@ -694,7 +700,8 @@ class Worker:
             self.error_code = 'IP BANNED'
 
             if self.multiproxy:
-                self.log.warning('Swapping out {} due to IP ban.', self.api.proxy)
+                self.log.warning(
+                    'Swapping out {} due to IP ban.', self.api.proxy)
                 self.swap_proxy()
             else:
                 self.log.error('IP banned.')
@@ -705,7 +712,8 @@ class Worker:
             self.log.warning('{} Giving up.', e)
         except ex.BadRPCException:
             self.error_code = 'BAD REQUEST'
-            self.log.warning('{} received code 3 and is likely banned. Removing until next run.', self.username)
+            self.log.warning(
+                '{} received code 3 and is likely banned. Removing until next run.', self.username)
             await self.new_account()
         except ex.InvalidRPCException as e:
             self.log.warning('{} Giving up.', e)
@@ -720,7 +728,8 @@ class Worker:
             self.error_code = 'MALFORMED RESPONSE'
         except EmptyGMOException as e:
             self.error_code = '0'
-            self.log.warning('Empty GetMapObjects response for {}. Speed: {:.2f}', self.username, self.speed)
+            self.log.warning(
+                'Empty GetMapObjects response for {}. Speed: {:.2f}', self.username, self.speed)
         except ex.HashServerException as e:
             self.log.warning('{}', e)
             self.error_code = 'HASHING ERROR'
@@ -735,8 +744,8 @@ class Worker:
         return False
 
     async def visit_point(self, point, spawn_id, bootstrap,
-            encounter_conf=conf.ENCOUNTER, notify_conf=conf.NOTIFY,
-            more_points=conf.MORE_POINTS):
+                          encounter_conf=conf.ENCOUNTER, notify_conf=conf.NOTIFY,
+                          more_points=conf.MORE_POINTS):
         self.handle.cancel()
         self.error_code = '∞' if bootstrap else '!'
 
@@ -761,7 +770,8 @@ class Worker:
             map_objects = responses['GET_MAP_OBJECTS']
 
             if map_objects.status != 1:
-                error = 'GetMapObjects code for {}. Speed: {:.2f}'.format(self.username, self.speed)
+                error = 'GetMapObjects code for {}. Speed: {:.2f}'.format(
+                    self.username, self.speed)
                 self.empty_visits += 1
                 if self.empty_visits > 3:
                     reason = '{} empty visits'.format(self.empty_visits)
@@ -770,7 +780,8 @@ class Worker:
         except KeyError:
             await self.random_sleep(.5, 1)
             await self.get_player()
-            raise ex.UnexpectedResponseException('Missing GetMapObjects response.')
+            raise ex.UnexpectedResponseException(
+                'Missing GetMapObjects response.')
 
         pokemon_seen = 0
         forts_seen = 0
@@ -792,27 +803,30 @@ class Worker:
                         normalized not in MYSTERY_CACHE):
                     if (encounter_conf == 'all'
                             or (encounter_conf == 'some'
-                            and normalized['pokemon_id'] in conf.ENCOUNTER_IDS) and conf.PGSCOUT_ATTEMPTS > 0):
+                                and normalized['pokemon_id'] in conf.ENCOUNTER_IDS) and conf.PGSCOUT_ATTEMPTS > 0):
                         try:
-                            async with ClientSession(loop=LOOP) as session: 
+                            async with ClientSession(loop=LOOP) as session:
                                 await self.pgscout(session, normalized, pokemon.spawn_point_id, conf.PGSCOUT_ATTEMPTS)
                         except CancelledError:
                             db_proc.add(normalized)
                             raise
                         except Exception as e:
-                            self.log.warning('{} during encounter', e.__class__.__name__)
+                            self.log.warning(
+                                '{} during encounter', e.__class__.__name__)
 
                 if notify_conf and self.notifier.eligible(normalized):
                     if encounter_conf and 'move_1' not in normalized and conf.PGSCOUT_ATTEMPTS > 0:
                         try:
-                            async with ClientSession(loop=LOOP) as session: 
+                            async with ClientSession(loop=LOOP) as session:
                                 await self.pgscout(session, normalized, pokemon.spawn_point_id, conf.PGSCOUT_ATTEMPTS)
                         except CancelledError:
                             db_proc.add(normalized)
                             raise
                         except Exception as e:
-                            self.log.warning('{} during encounter', e.__class__.__name__)
-                    LOOP.create_task(self.notifier.notify(normalized, map_objects.time_of_day))
+                            self.log.warning(
+                                '{} during encounter', e.__class__.__name__)
+                    LOOP.create_task(self.notifier.notify(
+                        normalized, map_objects.time_of_day))
                 db_proc.add(normalized)
 
             for fort in map_cell.forts:
@@ -829,7 +843,7 @@ class Worker:
                             self.bag_items < self.item_capacity
                             and time() > self.next_spin
                             and (not conf.SMART_THROTTLE or
-                            self.smart_throttle(2))):
+                                 self.smart_throttle(2))):
                         cooldown = fort.cooldown_complete_timestamp_ms
                         if not cooldown or time() > cooldown / 1000:
                             await self.spin_pokestop(fort)
@@ -842,7 +856,8 @@ class Worker:
                         if time() > self.next_gym:
                             gym = await self.gym_get_info(normalized_fort)
                             if gym:
-                                self.log.warning('Info for {}',  normalized_fort['name'])
+                                self.log.warning(
+                                    'Info for {}',  normalized_fort['name'])
                         db_proc.add(normalized_fort)
                     if fort.HasField('raid_info'):
                         normalized_raid = self.normalize_raid(fort)
@@ -851,7 +866,8 @@ class Worker:
 
                             # notify about raid only when we got a mon
                             if notify_conf:
-                                LOOP.create_task(self.notifier.notifyRaid(normalized_raid,self.normalize_gym(fort)))
+                                LOOP.create_task(self.notifier.notifyRaid(
+                                    normalized_raid, self.normalize_gym(fort)))
 
             if more_points:
                 try:
@@ -863,6 +879,12 @@ class Worker:
                         spawns.cell_points.add(p)
                 except KeyError:
                     pass
+      
+        if map_objects.client_weather:
+            for w in map_objects.client_weather:
+                weather = self.normalize_weather(w, map_objects.time_of_day)
+                if weather not in WEATHER_CACHE:
+                    db_proc.add(weather)
 
         if spawn_id:
             db_proc.add({
@@ -882,7 +904,8 @@ class Worker:
         else:
             self.empty_visits += 1
             if forts_seen == 0:
-                self.log.warning('Nothing seen by {}. Speed: {:.2f}', self.username, self.speed)
+                self.log.warning(
+                    'Nothing seen by {}. Speed: {:.2f}', self.username, self.speed)
                 self.error_code = '0 SEEN'
             else:
                 self.error_code = ','
@@ -893,8 +916,8 @@ class Worker:
 
         if conf.MAP_WORKERS:
             self.worker_dict.update([(self.worker_no,
-                (point, start, self.speed, self.total_seen,
-                self.visits, pokemon_seen))])
+                                      (point, start, self.speed, self.total_seen,
+                                       self.visits, pokemon_seen))])
         self.log.info(
             'Point processed, {} Pokemon and {} forts seen!',
             pokemon_seen,
@@ -912,11 +935,11 @@ class Worker:
         self.simulate_jitter(amount=0.00001)
 
         request = self.api.create_request()
-        request.gym_get_info(gym_id = gym['external_id'],
-                             player_lat_degrees = self.location[0],
-                             player_lng_degrees = self.location[1],
-                             gym_lat_degrees = gym['lat'],
-                             gym_lng_degrees = gym['lon'])
+        request.gym_get_info(gym_id=gym['external_id'],
+                             player_lat_degrees=self.location[0],
+                             player_lng_degrees=self.location[1],
+                             gym_lat_degrees=gym['lat'],
+                             gym_lng_degrees=gym['lon'])
         responses = await self.call(request, action=1)
 
         info = responses['GYM_GET_INFO']
@@ -929,25 +952,28 @@ class Worker:
                 gym['url'] = info.url
 
                 for gym_defender in info.gym_status_and_defenders.gym_defender:
-                    normalized_defender = self.normalize_gym_defender(gym_defender)
+                    normalized_defender = self.normalize_gym_defender(
+                        gym_defender)
                     gym['gym_defenders'].append(normalized_defender)
 
             except KeyError as e:
-                self.log.error('Missing Gym data in gym_get_info response. {}',e)
+                self.log.error(
+                    'Missing Gym data in gym_get_info response. {}', e)
             except Exception as e:
-                self.log.error('Unknown error: in gym_get_info: {}',e)
+                self.log.error('Unknown error: in gym_get_info: {}', e)
 
         elif result == 2:
             self.log.info('The server said {} was out of gym details range. {:.1f}m {:.1f}{}',
-                name, distance, self.speed, UNIT_STRING)
+                          name, distance, self.speed, UNIT_STRING)
 
         self.next_gym = time() + conf.GYM_COOLDOWN
         self.error_code = '!'
-        return gym 
+        return gym
 
     async def pgscout(self, session, pokemon, spawn_id, retry):
         if (retry <= 0):
-            self.log.exception('PGSCout failed to gather pokemon data after ' + conf.PGSCOUT_ATTEMPTS + ' tries or you set ATTEMPTS <=0')
+            self.log.exception('PGSCout failed to gather pokemon data after ' +
+                               conf.PGSCOUT_ATTEMPTS + ' tries or you set ATTEMPTS <=0')
             return
         else:
             try:
@@ -963,9 +989,11 @@ class Worker:
                 try:
                     pokemon['move_1'] = response['move_1']
                     pokemon['move_2'] = response['move_2']
-                    pokemon['individual_attack'] = response.get('iv_attack',0)
-                    pokemon['individual_defense'] = response.get('iv_defense',0)
-                    pokemon['individual_stamina'] = response.get('iv_stamina',0)
+                    pokemon['individual_attack'] = response.get('iv_attack', 0)
+                    pokemon['individual_defense'] = response.get(
+                        'iv_defense', 0)
+                    pokemon['individual_stamina'] = response.get(
+                        'iv_stamina', 0)
                     pokemon['height'] = response['height']
                     pokemon['weight'] = response['weight']
                     pokemon['gender'] = response['gender']
@@ -973,11 +1001,13 @@ class Worker:
                     pokemon['cp'] = response.get('cp')
                     pokemon['level'] = response.get('level')
                 except KeyError:
-                    self.log.error('Missing Pokemon data in PGScout response, retrying. ' + retry-1 + ' tries eft')
-                    await self.pgscout(session, pokemon, spawn_id, retry-1)
+                    self.log.error(
+                        'Missing Pokemon data in PGScout response, retrying. ' + retry - 1 + ' tries eft')
+                    await self.pgscout(session, pokemon, spawn_id, retry - 1)
             except Exception:
-                self.log.exception('PGScout Request Error, retrying. ' + retry-1 + ' tries left')
-                await self.pgscout(session, pokemon, spawn_id, retry-1)
+                self.log.exception(
+                    'PGScout Request Error, retrying. ' + retry - 1 + ' tries left')
+                await self.pgscout(session, pokemon, spawn_id, retry - 1)
 
     def smart_throttle(self, requests=1):
         try:
@@ -1005,18 +1035,18 @@ class Worker:
         self.simulate_jitter(amount=0.00001)
 
         request = self.api.create_request()
-        request.fort_details(fort_id = pokestop.id,
-                             latitude = pokestop_location[0],
-                             longitude = pokestop_location[1])
+        request.fort_details(fort_id=pokestop.id,
+                             latitude=pokestop_location[0],
+                             longitude=pokestop_location[1])
         responses = await self.call(request, action=1.2)
         name = responses['FORT_DETAILS'].name
 
         request = self.api.create_request()
-        request.fort_search(fort_id = pokestop.id,
-                            player_latitude = self.location[0],
-                            player_longitude = self.location[1],
-                            fort_latitude = pokestop_location[0],
-                            fort_longitude = pokestop_location[1])
+        request.fort_search(fort_id=pokestop.id,
+                            player_latitude=self.location[0],
+                            player_longitude=self.location[1],
+                            fort_latitude=pokestop_location[0],
+                            fort_longitude=pokestop_location[1])
         responses = await self.call(request, action=2)
 
         try:
@@ -1030,15 +1060,16 @@ class Worker:
             self.log.info('Spun {}.', name)
         elif result == 2:
             self.log.info('The server said {} was out of spinning range. {:.1f}m {:.1f}{}',
-                name, distance, self.speed, UNIT_STRING)
+                          name, distance, self.speed, UNIT_STRING)
         elif result == 3:
             self.log.warning('{} was in the cooldown period.', name)
         elif result == 4:
             self.log.warning('Could not spin {} because inventory was full. {}',
-                name, self.bag_items)
+                             name, self.bag_items)
             self.inventory_timestamp = 0
         elif result == 5:
-            self.log.warning('Could not spin {} because the daily limit was reached.', name)
+            self.log.warning(
+                'Could not spin {} because the daily limit was reached.', name)
             self.pokestops = False
         else:
             self.log.warning('Failed spinning {}: {}', name, result)
@@ -1047,7 +1078,8 @@ class Worker:
         self.error_code = '!'
 
     async def encounter(self, pokemon, spawn_id):
-        distance_to_pokemon = get_distance(self.location, (pokemon['lat'], pokemon['lon']))
+        distance_to_pokemon = get_distance(
+            self.location, (pokemon['lat'], pokemon['lon']))
 
         self.error_code = '~'
 
@@ -1130,24 +1162,28 @@ class Worker:
             inc = incubators.pop()
             if inc.item_id == 901 or egg.egg_km_walked_target > 9:
                 request = self.api.create_request()
-                request.use_item_egg_incubator(item_id=inc.id, pokemon_id=egg.id)
+                request.use_item_egg_incubator(
+                    item_id=inc.id, pokemon_id=egg.id)
                 responses = await self.call(request, action=4.5)
 
                 try:
                     ret = responses['USE_ITEM_EGG_INCUBATOR'].result
                     if ret == 4:
-                        self.log.warning("Failed to use incubator because it was already in use.")
+                        self.log.warning(
+                            "Failed to use incubator because it was already in use.")
                     elif ret != 1:
                         self.log.warning("Failed to apply incubator {} on {}, code: {}",
-                            inc.id, egg.id, ret)
+                                         inc.id, egg.id, ret)
                 except (KeyError, AttributeError):
-                    self.log.error('Invalid response to USE_ITEM_EGG_INCUBATOR')
+                    self.log.error(
+                        'Invalid response to USE_ITEM_EGG_INCUBATOR')
 
         self.unused_incubators = incubators
 
     async def handle_captcha(self, challenge_url):
         if self.num_captchas >= conf.CAPTCHAS_ALLOWED:
-            self.log.error("{} encountered too many CAPTCHAs, removing.", self.username)
+            self.log.error(
+                "{} encountered too many CAPTCHAs, removing.", self.username)
             raise CaptchaException
 
         self.error_code = 'C'
@@ -1175,9 +1211,11 @@ class Worker:
         if response.get('status') != 1:
             if code in ('ERROR_WRONG_USER_KEY', 'ERROR_KEY_DOES_NOT_EXIST', 'ERROR_ZERO_BALANCE'):
                 conf.CAPTCHA_KEY = None
-                self.log.error('2Captcha reported: {}, disabling CAPTCHA solving', code)
+                self.log.error(
+                    '2Captcha reported: {}, disabling CAPTCHA solving', code)
             else:
-                self.log.error("Failed to submit CAPTCHA for solving: {}", code)
+                self.log.error(
+                    "Failed to submit CAPTCHA for solving: {}", code)
             raise CaptchaSolveException
 
         try:
@@ -1198,7 +1236,7 @@ class Worker:
             raise
         except Exception as e:
             self.log.error('Got an error while trying to solve CAPTCHA. '
-                              'Check your API Key and account balance.')
+                           'Check your API Key and account balance.')
             raise CaptchaSolveException from e
 
         token = response.get('request')
@@ -1256,7 +1294,8 @@ class Worker:
                 timestr = '{}h{}m'.format(h, m)
             else:
                 timestr = '{}m'.format(m)
-            self.log.warning('Swapping {} which had been running for {}.', self.username, timestr)
+            self.log.warning(
+                'Swapping {} which had been running for {}.', self.username, timestr)
             self.update_accounts_dict()
             self.extra_queue.put(self.account)
             await self.new_account()
@@ -1283,7 +1322,8 @@ class Worker:
             self.location = self.account['location'][:2]
         except KeyError:
             self.location = get_start_coords(self.worker_no)
-        self.inventory_timestamp = self.account.get('inventory_timestamp', 0) if self.items else 0
+        self.inventory_timestamp = self.account.get(
+            'inventory_timestamp', 0) if self.items else 0
         self.player_level = self.account.get('level')
         self.last_request = self.account.get('time', 0)
         self.last_action = self.last_request
@@ -1421,6 +1461,24 @@ class Worker:
             obj['num_upgrades'] = pokemon.num_upgrades
 
         return obj
+
+    @staticmethod
+    def normalize_weather(raw, time_of_day):
+        alert_severity = 0
+        warn = False
+        if raw.alerts:
+            for a in raw.alerts:
+                warn = warn or a.warn_weather
+                if a.severity > alert_severity:
+                    alert_severity = a.severity
+        return {
+            'type': 'weather',
+            's2_cell_id': raw.s2_cell_id,
+            'condition': raw.gameplay_weather.gameplay_condition,
+            'alert_severity': alert_severity,
+            'warn': warn,
+            'day': time_of_day
+        }
 
     @staticmethod
     async def random_sleep(minimum=10.1, maximum=14, loop=LOOP):

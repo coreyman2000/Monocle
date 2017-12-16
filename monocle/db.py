@@ -242,10 +242,42 @@ class RaidCache:
             pass
 
 
+class WeatherCache:
+    """ Simple cache for storing weathers
+
+     It's used in order not to make as many queries to the database.
+     It schedules raids to be removed as soon as they expire.
+    """
+    def __init__(self):
+        self.store = {}
+
+    def __len__(self):
+        self.store = {}
+
+    def add(self, weather):
+        self.store[weather['s2_cell_id']] = weather
+
+    def remove(self, cache_id):
+        try:
+            del self.store[cache_id]
+        except KeyError:
+            pass
+
+    def __contains__(self, raw_weather):
+        try:
+            weather = self.store[raw_weather['s2_cell_id']]
+            return (weather['condition'] == raw_weather['condition']
+                and weather['alert_severity'] == raw_weather['alert_severity']
+                and weather['warn'] == raw_weather['warn']
+                and weather['day'] == raw_weather['day'])
+        except expression as identifier:
+            return False
+
 SIGHTING_CACHE = SightingCache()
 MYSTERY_CACHE = MysteryCache()
 FORT_CACHE = FortCache()
 RAID_CACHE = RaidCache()
+WEATHER_CACHE = WeatherCache()
 
 Base = declarative_base()
 
@@ -428,6 +460,19 @@ class Pokestop(Base):
     lon = Column(FLOAT_TYPE, index=True)
     name = Column(String(255))
     url = Column(String(255))
+
+class Weather(Base):
+    __tablename__ = 'weather'
+
+    id = Column(Integer, primary_key=True)
+    if conf.DB_ENGINE.startswith('mysql'):
+        s2_cell_id = Column(BIGINT)
+    elif conf.DB_ENGINE.startswith('postgres'):
+        s2_cell_id = Column(HUGE_TYPE)
+    condition = Column(TINY_TYPE)
+    alert_severity = Column(TINY_TYPE)
+    warn = Column(BOOLEAN)
+    day = Column(TINY_TYPE)
 
 
 @contextmanager
@@ -699,6 +744,29 @@ def add_pokestop(session, raw_pokestop):
     )
     session.add(pokestop)
     FORT_CACHE.pokestops.add(pokestop_id)
+
+def add_weather(session, raw_weather):
+    s2_cell_id = raw_weather['s2_cell_id']
+
+    weather = session.query(Weather) \
+        .filter(Weather.s2_cell_id == s2_cell_id) \
+        .first()
+
+    if not weather:
+        weather = Weather(
+            s2_cell_id=s2_cell_id,
+            condition=raw_weather['condition'],
+            alert_severity=raw_weather['alert_severity'],
+            warn=raw_weather['warn'],
+            day=raw_weather['day']
+        )
+        session.add(weather)
+    else:
+        weather.condition = raw_weather['condition']
+        weather.alert_severity = raw_weather['alert_severity']
+        weather.warn = raw_weather['warn']
+        weather.day = raw_weather['day']
+    WEATHER_CACHE.add(raw_weather)
 
 
 def update_failures(session, spawn_id, success, allowed=conf.FAILURES_ALLOWED):
