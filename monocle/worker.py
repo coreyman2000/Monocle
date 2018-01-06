@@ -227,7 +227,7 @@ class Worker:
 
     async def download_remote_config(self, version):
         request = self.api.create_request()
-        request.download_remote_config_version(platform=1, app_version=version)
+        request.download_remote_config_version(platform=1, device_model=self.account['model'], app_version=version)
         responses = await self.call(request, buddy=False, inbox=False, dl_hash=False)
 
         try:
@@ -281,9 +281,9 @@ class Worker:
         self.log.info('Starting RPC login sequence (iOS app simulation)')
 
         # empty request
-        request = self.api.create_request()
-        await self.call(request, chain=False)
-        await self.random_sleep(.43, .97)
+        # request = self.api.create_request()
+        # await self.call(request, chain=False)
+        # await self.random_sleep(.43, .97)
 
         # request 1: get_player
         tutorial_state = await self.get_player()
@@ -1024,15 +1024,16 @@ class Worker:
     async def spin_pokestop(self, pokestop):
         self.error_code = '$'
         pokestop_location = pokestop.latitude, pokestop.longitude
+
+        # randomize location up to ~1.5 meters
+        self.simulate_jitter(amount=0.00001)
+
         distance = get_distance(self.location, pokestop_location)
         # permitted interaction distance - 4 (for some jitter leeway)
         # estimation of spinning speed limit
         if distance > 36 or self.speed > SPINNING_SPEED_LIMIT:
             self.error_code = '!'
             return False
-
-        # randomize location up to ~1.5 meters
-        self.simulate_jitter(amount=0.00001)
 
         request = self.api.create_request()
         request.fort_details(fort_id=pokestop.id,
@@ -1252,7 +1253,7 @@ class Worker:
 
     def simulate_jitter(self, amount=0.00002):
         '''Slightly randomize location, by up to ~3 meters by default.'''
-        self.location = randomize_point(self.location)
+        self.location = randomize_point(self.location, amount=amount)
         self.altitude = uniform(self.altitude - 1, self.altitude + 1)
         self.api.set_position(*self.location, self.altitude)
 
